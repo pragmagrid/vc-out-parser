@@ -3,7 +3,7 @@ Name: vc-out-parser
 Summary: it prases vc-out.xml used by pragma boot https://github.com/pragmagrid/pragma_boot
 Version: 1.0
 Release: 1
-Copyright: GPL
+License: GPL
 Group: Applications
 URL: https://github.com/pragmagrid/vc-out-parser
 Vendor: UCSD
