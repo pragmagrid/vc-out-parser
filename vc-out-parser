@@ -63,7 +63,7 @@
 . /etc/init.d/functions
 
 vc_out="/root/vc-out.xml"
-bin_file="/opt/vc-out-parse/vc-out-parse.py"
+bin_file="/opt/vc-out-parse/vc-out-parser.py"
 
 case "$1" in
     start)
