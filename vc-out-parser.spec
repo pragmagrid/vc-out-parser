@@ -1,7 +1,7 @@
 
 Name: vc-out-parser
-Summary: It prases vc-out.xml
-Version: 1.0
+Summary: It parses vc-out.xml
+Version: 1.1
 Release: 1
 License: GPL
 Group: Applications
