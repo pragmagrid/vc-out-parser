@@ -134,6 +134,7 @@ def fixCompute(vc_out_xmlroot):
 	hosts_str += '%s\t%s.local %s\n' % (private_ip, fqdn, fqdn)
 	hosts_str += '%s\t%s %s\n' % (gw, fe_fqdn, fe_fqdn.split('.')[0])
 	write_file('/etc/hosts', hosts_str)
+	subprocess.call('hostname %s.local' % fqdn, shell=True)
 
 def fixFrontend(vc_out_xmlroot):
 	"""fix a frontend based on the vc-out.xml file"""
