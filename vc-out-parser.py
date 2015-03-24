@@ -59,6 +59,7 @@ import string
 import os.path
 import os
 import xml.etree.ElementTree
+import subprocess
 import sys
 
 
@@ -189,6 +190,7 @@ def fixFrontend(vc_out_xmlroot):
 
 	write_file('/etc/hosts', hosts_str)
 	write_file('/tmp/machinefile', machine_str)
+	subprocess.call('hostname %s' % fqdn, shell=True)
 
 
 
