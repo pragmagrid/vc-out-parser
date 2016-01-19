@@ -86,6 +86,7 @@ def parse():
 	vc_out_xmlroot = xml.etree.ElementTree.parse(vc_out_file).getroot()
 
 	# authorize ssh key
+	print "Writing SSH key"
 	ssh_key = vc_out_xmlroot.findall('./key')
 	if ssh_key :
 		print "Authorizing ssh key"
@@ -94,6 +95,7 @@ def parse():
 		f.close()
 
 	# write resolve.conf
+	print "Writing /etc/resolv.conf"
 	dns_node = vc_out_xmlroot.findall('./network/dns')[0]
 	dns_servers = dns_node.attrib["ip"]
 	static_str = 'search local\n'
@@ -107,6 +109,8 @@ def parse():
 	else:
 		print "Fixing frontend"
 		fixFrontend(vc_out_xmlroot)
+
+	print "Done vc-out-parser"
 
 
 
@@ -123,17 +127,23 @@ def fixCompute(vc_out_xmlroot):
 	mac = None
 	if 'mac' in xml_node.attrib:
 		mac = xml_node.attrib["mac"]
-	write_ifcfg('eth0', private_ip, netmask, mac)
+	if os.path.exists("/etc/syconfig/network"):
+		write_ifcfg('eth0', private_ip, netmask, mac)
 
-	# write syconfig/network
-	write_file('/etc/sysconfig/network',
-		'NETWORKING=yes\nHOSTNAME=%s.local\nGATEWAY=%s\n' % (fqdn, gw))
+		# write syconfig/network
+		write_file('/etc/sysconfig/network',
+			'NETWORKING=yes\nHOSTNAME=%s.local\nGATEWAY=%s\n' % (fqdn, gw))
+	elif os.path.exists("/etc/network/interfaces"):
+		write_interfaces( {'eth0': {'ip': private_ip, 'netmask': private_netmask}}, gw)
 
 	# write /etc/hosts
+	print "Writing /etc/hosts"
 	hosts_str = '127.0.0.1\tlocalhost.localdomain localhost\n'
 	hosts_str += '%s\t%s.local %s\n' % (private_ip, fqdn, fqdn)
 	hosts_str += '%s\t%s %s\n' % (gw, fe_fqdn, fe_fqdn.split('.')[0])
 	write_file('/etc/hosts', hosts_str)
+
+	print "Setting hostname"
 	subprocess.call('hostname %s.local' % fqdn, shell=True)
 
 def fixFrontend(vc_out_xmlroot):
@@ -158,15 +168,21 @@ def fixFrontend(vc_out_xmlroot):
 	if 'mac' in private_node.attrib:
 		private_mac = private_node.attrib["mac"]
 
-	# write private interface eth0
-	write_ifcfg('eth0', private_ip, private_netmask, private_mac)
-
-	# write public interface eth1
-	write_ifcfg('eth1', public_ip, public_netmask, public_mac)
-
 	# write syconfig/network
-	write_file('/etc/sysconfig/network',
-		'NETWORKING=yes\nHOSTNAME=%s\nGATEWAY=%s\n' % (fqdn, gw))
+	if os.path.exists("/etc/syconfig/network"):
+		# write private interface eth0
+		write_ifcfg('eth0', private_ip, private_netmask, private_mac)
+
+		# write public interface eth1
+		write_ifcfg('eth1', public_ip, public_netmask, public_mac)
+
+		write_file('/etc/sysconfig/network',
+			'NETWORKING=yes\nHOSTNAME=%s\nGATEWAY=%s\n' % (fqdn, gw))
+	elif os.path.exists("/etc/network/interfaces"):
+		write_interfaces( { 
+			'eth0': {'ip': private_ip, 'netmask': private_netmask, 'gw': gw},
+			'eth1': {'ip': public_ip, 'netmask': public_netmask}
+		}, gw)
 
 	# write /etc/hosts and /tmp/machine
 	hosts_str = '127.0.0.1\tlocalhost.localdomain localhost\n'
@@ -189,21 +205,42 @@ def fixFrontend(vc_out_xmlroot):
 				#we can just assume cpu = 1
 				machine_str += hostname + '\n'
 
+	print "Writing /etc/hosts"
 	write_file('/etc/hosts', hosts_str)
+	print "Writing /tmp/machinefile"
 	write_file('/tmp/machinefile', machine_str)
-	subprocess.call('hostname %s' % fqdn, shell=True)
 
+	print "Setting hostname"
+	subprocess.call('hostname %s' % fqdn, shell=True)
 
 
 def write_ifcfg(ifname, ip, netmask, mac):
 	""" write a ifcfg file with given arguments """
 	#TODO deal with MTU
+	if not os.path.exists("/etc/sysconfig/network-scripts"):
+		print "Wrong OS"
+		return
 	ifup_str = 'DEVICE=%s\nIPADDR=%s\nNETMASK=%s\n' % (ifname, ip, netmask)
 	ifup_str += 'BOOTPROTO=none\nONBOOT=yes\nMTU=1500\n'
 	if mac:
 		ifup_str += 'HWADDR=%s\n' % mac
 	write_file('/etc/sysconfig/network-scripts/ifcfg-%s' % ifname, ifup_str)
-
+ 
+def write_interfaces(network_info, gw):
+	""" write /etc/network/interfaces with given arguments """
+	
+	if not os.path.exists("/etc/network/interfaces"):
+		print "Unable to find existing /etc/network/interfaces file"
+		return
+	print "Writing /etc/network/interfaces"
+	os.rename("/etc/network/interfaces", "/etc/network/interfaces.vc-out-parser.bak")
+        interfaces = "auto lo\niface lo inet loopback\n"
+	for device in network_info:
+		interfaces += "auto %s\niface %s inet static\n\taddress %s\n\tnetmask %s\n" % (
+			device, device, network_info[device]['ip'], network_info[device]['netmask'])
+		if "gw" in network_info:
+			interfaces += "\tgateway %s" % gw
+	write_file('/etc/network/interfaces', interfaces)
 
 def write_file(file_name, content):
 	"""write the content in the file_name"""
