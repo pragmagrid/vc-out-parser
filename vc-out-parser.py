@@ -136,7 +136,7 @@ def fixCompute(vc_out_xmlroot):
 		write_file('/etc/sysconfig/network',
 			'NETWORKING=yes\nHOSTNAME=%s.local\nGATEWAY=%s\n' % (fqdn, gw))
 	elif os.path.exists("/etc/network/interfaces"):
-		write_interfaces( {'eth0': {'ip': private_ip, 'netmask': netmask}}, None)
+		write_interfaces( {'eth0': {'ip': private_ip, 'netmask': netmask}})
 
 	# write /etc/hosts
 	print "Writing /etc/hosts"
@@ -185,9 +185,9 @@ def fixFrontend(vc_out_xmlroot):
 			'NETWORKING=yes\nHOSTNAME=%s\nGATEWAY=%s\n' % (fqdn, gw))
 	elif os.path.exists("/etc/network/interfaces"):
 		write_interfaces( { 
-			'eth0': {'ip': private_ip, 'netmask': private_netmask, 'gw': gw},
-			'eth1': {'ip': public_ip, 'netmask': public_netmask}
-		}, gw)
+			'eth0': {'ip': private_ip, 'netmask': private_netmask },
+			'eth1': {'ip': public_ip, 'netmask': public_netmask, 'gw': gw}
+		})
 
 	# write /etc/hosts and /tmp/machine
 	hosts_str = '127.0.0.1\tlocalhost.localdomain localhost\n'
@@ -233,7 +233,7 @@ def write_ifcfg(ifname, ip, netmask, mac):
 		ifup_str += 'HWADDR=%s\n' % mac
 	write_file('/etc/sysconfig/network-scripts/ifcfg-%s' % ifname, ifup_str)
  
-def write_interfaces(network_info, gw):
+def write_interfaces(network_info):
 	""" write /etc/network/interfaces with given arguments """
 	
 	if not os.path.exists("/etc/network/interfaces"):
@@ -245,8 +245,8 @@ def write_interfaces(network_info, gw):
 	for device in network_info:
 		interfaces += "auto %s\niface %s inet static\n\taddress %s\n\tnetmask %s\n" % (
 			device, device, network_info[device]['ip'], network_info[device]['netmask'])
-		if "gw" in network_info:
-			interfaces += "\tgateway %s" % gw
+		if "gw" in network_info[device]:
+			interfaces += "\tgateway %s\n" % network_info[device]['gw']
 	write_file('/etc/network/interfaces', interfaces)
 
 def write_file(file_name, content):
