@@ -136,7 +136,7 @@ def fixCompute(vc_out_xmlroot):
 		write_file('/etc/sysconfig/network',
 			'NETWORKING=yes\nHOSTNAME=%s.local\nGATEWAY=%s\n' % (fqdn, gw))
 	elif os.path.exists("/etc/network/interfaces"):
-		write_interfaces( {'eth0': {'ip': private_ip, 'netmask': private_netmask}}, gw)
+		write_interfaces( {'eth0': {'ip': private_ip, 'netmask': netmask}}, None)
 
 	# write /etc/hosts
 	print "Writing /etc/hosts"
