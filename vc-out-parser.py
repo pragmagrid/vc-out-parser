@@ -90,6 +90,8 @@ def parse():
 	ssh_key = vc_out_xmlroot.findall('./key')
 	if ssh_key :
 		print "Authorizing ssh key"
+		if not os.path.exists('/root/.ssh'):
+			os.mkdir('/root/.ssh')
 		f = open('/root/.ssh/authorized_keys', 'a')
 		f.write(ssh_key[0].text.strip() + '\n')
 		f.close()
@@ -145,6 +147,9 @@ def fixCompute(vc_out_xmlroot):
 
 	print "Setting hostname"
 	subprocess.call('hostname %s.local' % fqdn, shell=True)
+	if os.path.exists("/etc/hostname"):
+		write_file('/etc/hostname', "%s.local\n" % fqdn)
+
 
 def fixFrontend(vc_out_xmlroot):
 	"""fix a frontend based on the vc-out.xml file"""
@@ -212,6 +217,8 @@ def fixFrontend(vc_out_xmlroot):
 
 	print "Setting hostname"
 	subprocess.call('hostname %s' % fqdn, shell=True)
+	if os.path.exists("/etc/hostname"):
+		write_file('/etc/hostname', "%s\n" % fqdn)
 
 
 def write_ifcfg(ifname, ip, netmask, mac):
