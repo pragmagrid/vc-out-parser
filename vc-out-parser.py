@@ -59,6 +59,7 @@ import string
 import os.path
 import os
 import xml.etree.ElementTree
+import platform
 import subprocess
 import sys
 
@@ -130,11 +131,11 @@ def fixCompute(vc_out_xmlroot):
 	if 'mac' in xml_node.attrib:
 		mac = xml_node.attrib["mac"]
 	if os.path.exists("/etc/sysconfig/network"):
-		write_ifcfg('eth0', private_ip, netmask, mac)
+		write_ifcfg('eth0', private_ip, netmask, mac, gw)
 
 		# write sysconfig/network
 		write_file('/etc/sysconfig/network',
-			'NETWORKING=yes\nHOSTNAME=%s.local\nGATEWAY=%s\n' % (fqdn, gw))
+			'NETWORKING=yes\nHOSTNAME=%s.local\n' % fqdn)
 	elif os.path.exists("/etc/network/interfaces"):
 		write_interfaces( {'eth0': {'ip': private_ip, 'netmask': netmask}})
 
@@ -174,15 +175,15 @@ def fixFrontend(vc_out_xmlroot):
 		private_mac = private_node.attrib["mac"]
 
 	# write sysconfig/network
-	if os.path.exists("/etc/sysconfig/network"):
+	if os.path.exists("/etc/sysconfig/network-scripts"):
 		# write private interface eth0
 		write_ifcfg('eth0', private_ip, private_netmask, private_mac)
 
 		# write public interface eth1
-		write_ifcfg('eth1', public_ip, public_netmask, public_mac)
+		write_ifcfg('eth1', public_ip, public_netmask, public_mac, gw)
 
 		write_file('/etc/sysconfig/network',
-			'NETWORKING=yes\nHOSTNAME=%s\nGATEWAY=%s\n' % (fqdn, gw))
+			'NETWORKING=yes\nHOSTNAME=%s\n' % fqdn)
 	elif os.path.exists("/etc/network/interfaces"):
 		write_interfaces( { 
 			'eth0': {'ip': private_ip, 'netmask': private_netmask },
@@ -221,7 +222,7 @@ def fixFrontend(vc_out_xmlroot):
 		write_file('/etc/hostname', "%s\n" % fqdn)
 
 
-def write_ifcfg(ifname, ip, netmask, mac):
+def write_ifcfg(ifname, ip, netmask, mac, gw=None):
 	""" write a ifcfg file with given arguments """
 	#TODO deal with MTU
 	if not os.path.exists("/etc/sysconfig/network-scripts"):
@@ -231,6 +232,8 @@ def write_ifcfg(ifname, ip, netmask, mac):
 	ifup_str += 'BOOTPROTO=none\nONBOOT=yes\nMTU=1500\n'
 	if mac:
 		ifup_str += 'HWADDR=%s\n' % mac
+	if gw != None:
+		ifup_str += 'GATEWAY=%s\n' % gw
 	write_file('/etc/sysconfig/network-scripts/ifcfg-%s' % ifname, ifup_str)
  
 def write_interfaces(network_info):
