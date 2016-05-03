@@ -129,10 +129,10 @@ def fixCompute(vc_out_xmlroot):
 	mac = None
 	if 'mac' in xml_node.attrib:
 		mac = xml_node.attrib["mac"]
-	if os.path.exists("/etc/syconfig/network"):
+	if os.path.exists("/etc/sysconfig/network"):
 		write_ifcfg('eth0', private_ip, netmask, mac)
 
-		# write syconfig/network
+		# write sysconfig/network
 		write_file('/etc/sysconfig/network',
 			'NETWORKING=yes\nHOSTNAME=%s.local\nGATEWAY=%s\n' % (fqdn, gw))
 	elif os.path.exists("/etc/network/interfaces"):
@@ -173,8 +173,8 @@ def fixFrontend(vc_out_xmlroot):
 	if 'mac' in private_node.attrib:
 		private_mac = private_node.attrib["mac"]
 
-	# write syconfig/network
-	if os.path.exists("/etc/syconfig/network"):
+	# write sysconfig/network
+	if os.path.exists("/etc/sysconfig/network"):
 		# write private interface eth0
 		write_ifcfg('eth0', private_ip, private_netmask, private_mac)
 
