@@ -60,10 +60,29 @@
 #
 #
 
-. /etc/init.d/functions
+if [ -f /etc/init.d/functions ]; then
+  . /etc/init.d/functions
+fi
 
+# this file should either be placed by pragma_boot on boot or needs to be 
+# fetched from cloud tool's user-data (set by pragma_boot)
 vc_out="/root/vc-out.xml"
-bin_file="/opt/vc-out-parse/vc-out-parser.py"
+if [ ! -f $vc_out ]; then
+  echo "Attempting to fetch vc-out.xml file"
+  # virtual router should return our ip and gateway
+  dhclient -r eth0
+  ipinfo=`dhclient -v eth0 2>&1 | grep DHCPACK`
+  ip=`echo $ipinfo | cut -f 3 -d' '`
+  # temporarily configure ip -- wget request needs to know our ip in order 
+  # to know what user data to fetch
+  ifconfig eth0 $ip
+  vrouter=`echo $ipinfo | cut -f 5 -d' '`
+  # fetch vc-out.xml from user-data field set by pragma_boot
+  wget -O ${vc_out} http://${vrouter}/latest/user-data 
+else
+  echo "Found existing vc-out.xml file"
+fi
+bin_file="/opt/vc-out-parser/vc-out-parser.py"
 
 case "$1" in
     start)

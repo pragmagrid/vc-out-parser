@@ -59,7 +59,6 @@ import string
 import os.path
 import os
 import xml.etree.ElementTree
-import platform
 import subprocess
 import sys
 
@@ -137,7 +136,7 @@ def fixCompute(vc_out_xmlroot):
 		write_file('/etc/sysconfig/network',
 			'NETWORKING=yes\nHOSTNAME=%s.local\n' % fqdn)
 	elif os.path.exists("/etc/network/interfaces"):
-		write_interfaces( {'eth0': {'ip': private_ip, 'netmask': netmask}})
+		write_interfaces( [{'iface': 'eth0', 'ip': private_ip, 'netmask': netmask}])
 
 	# write /etc/hosts
 	print "Writing /etc/hosts"
@@ -173,6 +172,9 @@ def fixFrontend(vc_out_xmlroot):
 	private_mac = None
 	if 'mac' in private_node.attrib:
 		private_mac = private_node.attrib["mac"]
+	private_gw  = None
+	if 'gw' in private_node.attrib:
+		private_gw = private_node.attrib["gw"]
 
 	# write sysconfig/network
 	if os.path.exists("/etc/sysconfig/network-scripts"):
@@ -185,10 +187,10 @@ def fixFrontend(vc_out_xmlroot):
 		write_file('/etc/sysconfig/network',
 			'NETWORKING=yes\nHOSTNAME=%s\n' % fqdn)
 	elif os.path.exists("/etc/network/interfaces"):
-		write_interfaces( { 
-			'eth0': {'ip': private_ip, 'netmask': private_netmask },
-			'eth1': {'ip': public_ip, 'netmask': public_netmask, 'gw': gw}
-		})
+		write_interfaces( [ 
+			{'iface': 'eth0', 'ip': private_ip, 'netmask': private_netmask },
+			{'iface': 'eth1', 'ip': public_ip, 'netmask': public_netmask, 'gw': gw}
+		])
 
 	# write /etc/hosts and /tmp/machine
 	hosts_str = '127.0.0.1\tlocalhost.localdomain localhost\n'
@@ -222,7 +224,7 @@ def fixFrontend(vc_out_xmlroot):
 		write_file('/etc/hostname', "%s\n" % fqdn)
 
 
-def write_ifcfg(ifname, ip, netmask, mac, gw=None):
+def write_ifcfg(ifname, ip, netmask, mac, gw = None):
 	""" write a ifcfg file with given arguments """
 	#TODO deal with MTU
 	if not os.path.exists("/etc/sysconfig/network-scripts"):
@@ -247,9 +249,9 @@ def write_interfaces(network_info):
         interfaces = "auto lo\niface lo inet loopback\n"
 	for device in network_info:
 		interfaces += "auto %s\niface %s inet static\n\taddress %s\n\tnetmask %s\n" % (
-			device, device, network_info[device]['ip'], network_info[device]['netmask'])
-		if "gw" in network_info[device]:
-			interfaces += "\tgateway %s\n" % network_info[device]['gw']
+			device['iface'], device['iface'], device['ip'], device['netmask'])
+		if "gw" in device:
+			interfaces += "\tgateway %s\n" % device['gw']
 	write_file('/etc/network/interfaces', interfaces)
 
 def write_file(file_name, content):
