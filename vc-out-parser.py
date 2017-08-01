@@ -125,18 +125,20 @@ def fixCompute(vc_out_xmlroot):
 	gw = xml_node.attrib["gw"]
 	fe_fqdn = vc_out_xmlroot.findall('./frontend/public')[0].attrib["fqdn"]
 
-	# write ifcfg eth0
+	# write ifcfg 
 	mac = None
+	iface = "eth0"
 	if 'mac' in xml_node.attrib:
 		mac = xml_node.attrib["mac"]
+		iface = get_iface(mac)
 	if os.path.exists("/etc/sysconfig/network"):
-		write_ifcfg('eth0', private_ip, netmask, mac, gw)
+		write_ifcfg(iface, private_ip, netmask, mac, gw)
 
 		# write sysconfig/network
 		write_file('/etc/sysconfig/network',
 			'NETWORKING=yes\nHOSTNAME=%s.local\n' % fqdn)
 	elif os.path.exists("/etc/network/interfaces"):
-		write_interfaces( [{'iface': 'eth0', 'ip': private_ip, 'netmask': netmask}])
+		write_interfaces( [{'iface': iface, 'ip': private_ip, 'netmask': netmask}])
 
 	# write /etc/hosts
 	print "Writing /etc/hosts"
@@ -161,8 +163,10 @@ def fixFrontend(vc_out_xmlroot):
 	public_netmask = pubblic_node.attrib["netmask"]
 	gw = pubblic_node.attrib["gw"]
 	public_mac = None
+	public_iface = "eth1"
 	if 'mac' in pubblic_node.attrib:
 		public_mac = pubblic_node.attrib["mac"]
+		public_iface = get_iface(public_mac)
 	hostname = fqdn.split('.')[0]
 
 	# private interface
@@ -170,26 +174,28 @@ def fixFrontend(vc_out_xmlroot):
 	private_ip = private_node.attrib["ip"]
 	private_netmask = private_node.attrib["netmask"]
 	private_mac = None
+	private_iface = "eth0"
 	if 'mac' in private_node.attrib:
 		private_mac = private_node.attrib["mac"]
+		private_iface = get_iface(private_mac)
 	private_gw  = None
 	if 'gw' in private_node.attrib:
 		private_gw = private_node.attrib["gw"]
 
 	# write sysconfig/network
 	if os.path.exists("/etc/sysconfig/network-scripts"):
-		# write private interface eth0
-		write_ifcfg('eth0', private_ip, private_netmask, private_mac)
+		# write private interface 
+		write_ifcfg(private_iface, private_ip, private_netmask, private_mac)
 
-		# write public interface eth1
-		write_ifcfg('eth1', public_ip, public_netmask, public_mac, gw)
+		# write public interface 
+		write_ifcfg(public_iface, public_ip, public_netmask, public_mac, gw)
 
 		write_file('/etc/sysconfig/network',
 			'NETWORKING=yes\nHOSTNAME=%s\n' % fqdn)
 	elif os.path.exists("/etc/network/interfaces"):
 		write_interfaces( [ 
-			{'iface': 'eth0', 'ip': private_ip, 'netmask': private_netmask },
-			{'iface': 'eth1', 'ip': public_ip, 'netmask': public_netmask, 'gw': gw}
+			{'iface': private_iface, 'ip': private_ip, 'netmask': private_netmask },
+			{'iface': public_iface, 'ip': public_ip, 'netmask': public_netmask, 'gw': gw}
 		])
 
 	# write /etc/hosts and /tmp/machine
@@ -223,6 +229,9 @@ def fixFrontend(vc_out_xmlroot):
 	if os.path.exists("/etc/hostname"):
 		write_file('/etc/hostname', "%s\n" % fqdn)
 
+def get_iface(mac):
+	iface_out = subprocess.check_output(["ifconfig -a | grep " + mac], shell=True)
+	return iface_out.split(" ")[0]
 
 def write_ifcfg(ifname, ip, netmask, mac, gw = None):
 	""" write a ifcfg file with given arguments """
