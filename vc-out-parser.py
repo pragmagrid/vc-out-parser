@@ -59,6 +59,7 @@ import string
 import os.path
 import os
 import xml.etree.ElementTree
+import platform
 import subprocess
 import sys
 
@@ -156,68 +157,65 @@ def fixCompute(vc_out_xmlroot):
 def fixFrontend(vc_out_xmlroot):
 	"""fix a frontend based on the vc-out.xml file"""
 
-	# public interface
-	pubblic_node = vc_out_xmlroot.findall('./frontend/public')[0]
-	public_ip = pubblic_node.attrib["ip"]
-	fqdn = pubblic_node.attrib["fqdn"]
-	public_netmask = pubblic_node.attrib["netmask"]
-	gw = pubblic_node.attrib["gw"]
-	public_mac = None
-	public_iface = "eth1"
-	if 'mac' in pubblic_node.attrib:
-		public_mac = pubblic_node.attrib["mac"]
-		public_iface = get_iface(public_mac)
-	hostname = fqdn.split('.')[0]
-
-	# private interface
-	private_node = vc_out_xmlroot.findall('./frontend/private')[0]
-	private_ip = private_node.attrib["ip"]
-	private_netmask = private_node.attrib["netmask"]
-	private_mac = None
-	private_iface = "eth0"
-	if 'mac' in private_node.attrib:
-		private_mac = private_node.attrib["mac"]
-		private_iface = get_iface(private_mac)
-	private_gw  = None
-	if 'gw' in private_node.attrib:
-		private_gw = private_node.attrib["gw"]
-
-	# write sysconfig/network
-	if os.path.exists("/etc/sysconfig/network-scripts"):
-		# write private interface 
-		write_ifcfg(private_iface, private_ip, private_netmask, private_mac)
-
-		# write public interface 
-		write_ifcfg(public_iface, public_ip, public_netmask, public_mac, gw)
-
+	frontend = vc_out_xmlroot.find('./frontend')
+	(fqdn, gw, name) = (None, None, None)
+	try:
+		fqdn = frontend.attrib["fqdn"]
+		gw = frontend.attrib["gw"]
+		name = frontend.attrib["name"]
+	except: # is old version
+		fqdn = frontend.find("public").attrib["fqdn"]
+		gw = frontend.find("public").attrib["gw"]
+		name = frontend.find("public").attrib["name"]
+	if os.path.exists("/etc/sysconfig/network"):
 		write_file('/etc/sysconfig/network',
-			'NETWORKING=yes\nHOSTNAME=%s\n' % fqdn)
-	elif os.path.exists("/etc/network/interfaces"):
-		write_interfaces( [ 
-			{'iface': private_iface, 'ip': private_ip, 'netmask': private_netmask },
-			{'iface': public_iface, 'ip': public_ip, 'netmask': public_netmask, 'gw': gw}
-		])
+		           'NETWORKING=yes\nHOSTNAME=%s\nGATEWAY=%s\n' % (fqdn,gw))
+
+	interface_spec = {}
+	hosts_str = '127.0.0.1\tlocalhost.localdomain localhost\n'
+	for interface in frontend:
+		ip = interface.attrib["ip"]
+		netmask = interface.attrib["netmask"]
+		mac = interface.attrib["mac"]
+		iface = get_iface(mac)
+		if iface is None:
+			print "Unable to find interface for mac %s" % mac
+			continue
+		print "Configuring iface %s for %s" % (iface, mac)
+		interface_spec[iface] = {'ip': ip, 'netmask': netmask}
+
+		# append /etc/hosts
+		hosts_str = append_host(name, fqdn, interface, hosts_str)
+
+		# write syconfig/network
+		if os.path.exists("/etc/sysconfig/network-scripts"):
+			# write private interface eth0
+			write_ifcfg(iface, ip, netmask, mac)
+
+	if os.path.exists("/etc/network/interfaces"):
+		write_interfaces(interface_spec)
 
 	# write /etc/hosts and /tmp/machine
-	hosts_str = '127.0.0.1\tlocalhost.localdomain localhost\n'
-	hosts_str += '%s\t%s.local %s\n' % (private_ip, hostname, hostname)
-	hosts_str += '%s\t%s\n' % (public_ip, fqdn)
 	machine_str = ""
 
 	# adding compute node to the DB
 	xml_nodes = vc_out_xmlroot.findall('./compute/node')
 	if xml_nodes:
 		# add the nodes to the hosts file
-		for node_xml in xml_nodes:
-			hostname = node_xml.attrib["name"]
-			ip = node_xml.attrib["ip"]
-			hosts_str +=  '%s\t%s.local %s\n' % (ip, hostname, hostname)
-			if 'cpus' in node_xml.attrib:
-				cpus = int(node_xml.attrib['cpus'])
-				machine_str += ''.join([hostname + '\n' for i in range(0, cpus)])
+		for node in xml_nodes:
+			name = node.attrib["name"]
+			if len(list(node)) > 0:
+				for iface in node:
+					hosts_str = append_host(name, None, iface, hosts_str)
+			else: # backwards compatible with old vc-out.xml format
+				ip = node.attrib["ip"]
+				hosts_str += '%s\t%s.local %s\n' % (ip, name, name)
+			if 'cpus' in node.attrib:
+				cpus = int(node.attrib['cpus'])
+				machine_str += ''.join([name + '\n' for i in range(0, cpus)])
 			else:
 				#we can just assume cpu = 1
-				machine_str += hostname + '\n'
+				machine_str += name + '\n'
 
 	print "Writing /etc/hosts"
 	write_file('/etc/hosts', hosts_str)
@@ -230,8 +228,22 @@ def fixFrontend(vc_out_xmlroot):
 		write_file('/etc/hostname', "%s\n" % fqdn)
 
 def get_iface(mac):
-	iface_out = subprocess.check_output(["ifconfig -a | grep " + mac], shell=True)
-	return iface_out.split(" ")[0]
+	try:
+		iface_out = subprocess.check_output(["ip -o link show| grep %s" % mac], shell=True)
+		iface_part = iface_out.split(" ")[1]
+		return iface_part.split(":")[0]
+	except Exception:
+		return None
+		
+def append_host(name, fqdn, iface, hosts):
+	ip = iface.attrib["ip"]
+	if iface.tag == 'private':
+		hosts += '%s\t%s.local %s\n' % (ip, name, name)
+	elif iface.tag == 'public':
+		hosts += '%s\t%s\n' % (ip, fqdn)
+	else:
+		hosts += '%s\t%s.%s\n' % (ip, name, iface.tag)
+	return hosts
 
 def write_ifcfg(ifname, ip, netmask, mac, gw = None):
 	""" write a ifcfg file with given arguments """
