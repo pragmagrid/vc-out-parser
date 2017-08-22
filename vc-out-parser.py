@@ -177,12 +177,15 @@ def fixFrontend(vc_out_xmlroot):
 		ip = interface.attrib["ip"]
 		netmask = interface.attrib["netmask"]
 		mac = interface.attrib["mac"]
+		mtu = "1500"
+		if "mtu" in interface.attrib:
+			mtu = interface.attrib["mtu"]
 		iface = get_iface(mac)
 		if iface is None:
 			print "Unable to find interface for mac %s" % mac
 			continue
 		print "Configuring iface %s for %s" % (iface, mac)
-		interface_spec[iface] = {'ip': ip, 'netmask': netmask}
+		interface_spec[iface] = {'ip': ip, 'netmask': netmask, 'mtu': mtu}
 
 		# append /etc/hosts
 		hosts_str = append_host(name, fqdn, interface, hosts_str)
@@ -190,7 +193,7 @@ def fixFrontend(vc_out_xmlroot):
 		# write syconfig/network
 		if os.path.exists("/etc/sysconfig/network-scripts"):
 			# write private interface eth0
-			write_ifcfg(iface, ip, netmask, mac)
+			write_ifcfg(iface, ip, netmask, mac, mtu)
 
 	if os.path.exists("/etc/network/interfaces"):
 		write_interfaces(interface_spec)
@@ -245,14 +248,13 @@ def append_host(name, fqdn, iface, hosts):
 		hosts += '%s\t%s.%s\n' % (ip, name, iface.tag)
 	return hosts
 
-def write_ifcfg(ifname, ip, netmask, mac, gw = None):
+def write_ifcfg(ifname, ip, netmask, mac, mtu, gw = None):
 	""" write a ifcfg file with given arguments """
-	#TODO deal with MTU
 	if not os.path.exists("/etc/sysconfig/network-scripts"):
 		print "Wrong OS"
 		return
 	ifup_str = 'DEVICE=%s\nIPADDR=%s\nNETMASK=%s\n' % (ifname, ip, netmask)
-	ifup_str += 'BOOTPROTO=none\nONBOOT=yes\nMTU=1500\n'
+	ifup_str += 'BOOTPROTO=none\nONBOOT=yes\nMTU=%s\n' % mtu
 	if mac:
 		ifup_str += 'HWADDR=%s\n' % mac
 	if gw != None:
@@ -269,8 +271,8 @@ def write_interfaces(network_info):
 	os.rename("/etc/network/interfaces", "/etc/network/interfaces.vc-out-parser.bak")
         interfaces = "auto lo\niface lo inet loopback\n"
 	for device in network_info:
-		interfaces += "auto %s\niface %s inet static\n\taddress %s\n\tnetmask %s\n" % (
-			device['iface'], device['iface'], device['ip'], device['netmask'])
+		interfaces += "auto %s\niface %s inet static\n\taddress %s\n\tnetmask %s\n\tmtu %s\n" % (
+			device['iface'], device['iface'], device['ip'], device['netmask'], device['mtu'])
 		if "gw" in device:
 			interfaces += "\tgateway %s\n" % device['gw']
 	write_file('/etc/network/interfaces', interfaces)
