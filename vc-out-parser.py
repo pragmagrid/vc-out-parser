@@ -99,19 +99,25 @@ def parse():
 
 	# write resolve.conf
 	print "Writing /etc/resolv.conf"
-	dns_node = vc_out_xmlroot.findall('./network/dns')[0]
+	dns_node = vc_out_xmlroot.find('./network/dns')
 	dns_servers = dns_node.attrib["ip"]
 	static_str = 'search local\n'
 	for i in dns_servers.split(','):
 		static_str += 'nameserver %s\n' % i
 	write_file('/etc/resolv.conf', static_str)
 
+	hostname = None
 	if len(  vc_out_xmlroot.findall('./compute/private') ) > 0 :
 		print "Fixing compute node"
-		fixCompute(vc_out_xmlroot)
+		hostname = fixCompute(vc_out_xmlroot)
 	else:
 		print "Fixing frontend"
-		fixFrontend(vc_out_xmlroot)
+		hostname = fixFrontend(vc_out_xmlroot)
+
+	print "Setting hostname"
+	subprocess.call('hostname %s' % hostname, shell=True)
+	if os.path.exists("/etc/hostname"):
+		write_file('/etc/hostname', "%s\n" % hostname)
 
 	print "Done vc-out-parser"
 
@@ -119,39 +125,29 @@ def parse():
 
 def fixCompute(vc_out_xmlroot):
 	"""fix a compute node network based on the vc-out.xml"""
-	xml_node = vc_out_xmlroot.findall('./compute/private')[0]
-	private_ip = xml_node.attrib["ip"]
-	fqdn = xml_node.attrib["fqdn"]
-	netmask = xml_node.attrib["netmask"]
-	gw = xml_node.attrib["gw"]
-	fe_fqdn = vc_out_xmlroot.findall('./frontend/public')[0].attrib["fqdn"]
+	compute = vc_out_xmlroot.find('./compute')
+	(name, gw, fe_fqdn) = (None, None, None)
+	try:
+		name = compute.attrib["name"]
+		gw = compute.attrib["gw"]
+		fe_fqdn = vc_out_xmlroot.find('./frontend').attrib["fqdn"]
+	except:
+		name = compute.find("private").attrib["fqdn"]
+		gw = compute.find("private").attrib["gw"]
+		fe_fqdn = vc_out_xmlroot.find('./frontend/public').attrib["fqdn"]
 
-	# write ifcfg 
-	mac = None
-	iface = "eth0"
-	if 'mac' in xml_node.attrib:
-		mac = xml_node.attrib["mac"]
-		iface = get_iface(mac)
 	if os.path.exists("/etc/sysconfig/network"):
-		write_ifcfg(iface, private_ip, netmask, mac, gw)
-
-		# write sysconfig/network
 		write_file('/etc/sysconfig/network',
-			'NETWORKING=yes\nHOSTNAME=%s.local\n' % fqdn)
-	elif os.path.exists("/etc/network/interfaces"):
-		write_interfaces( [{'iface': iface, 'ip': private_ip, 'netmask': netmask}])
+			'NETWORKING=yes\nHOSTNAME=%s.local\n' % name)
+
+	hosts_str = configure_interfaces_and_hosts(compute, name, None, gw, "private")
 
 	# write /etc/hosts
 	print "Writing /etc/hosts"
-	hosts_str = '127.0.0.1\tlocalhost.localdomain localhost\n'
-	hosts_str += '%s\t%s.local %s\n' % (private_ip, fqdn, fqdn)
 	hosts_str += '%s\t%s %s\n' % (gw, fe_fqdn, fe_fqdn.split('.')[0])
 	write_file('/etc/hosts', hosts_str)
 
-	print "Setting hostname"
-	subprocess.call('hostname %s.local' % fqdn, shell=True)
-	if os.path.exists("/etc/hostname"):
-		write_file('/etc/hostname', "%s.local\n" % fqdn)
+	return '%s.local' % name
 
 
 def fixFrontend(vc_out_xmlroot):
@@ -171,39 +167,9 @@ def fixFrontend(vc_out_xmlroot):
 		write_file('/etc/sysconfig/network',
 		           'NETWORKING=yes\nHOSTNAME=%s\nGATEWAY=%s\n' % (fqdn,gw))
 
-	interface_spec = {}
-	hosts_str = '127.0.0.1\tlocalhost.localdomain localhost\n'
-	for interface in frontend:
-		ip = interface.attrib["ip"]
-		netmask = interface.attrib["netmask"]
-		mac = interface.attrib["mac"]
-		mtu = "1500"
-		if "mtu" in interface.attrib:
-			mtu = interface.attrib["mtu"]
-		iface = get_iface(mac)
-		if iface is None:
-			print "Unable to find interface for mac %s" % mac
-			continue
-		print "Configuring iface %s for %s" % (iface, mac)
-		iface_gw = None
-		interface_spec[iface] = {'ip': ip, 'netmask': netmask, 'mtu': mtu}
-		if interface.tag == 'public':
-			interface_spec[iface]['gw'] = gw
-			iface_gw = gw
+	hosts_str = configure_interfaces_and_hosts(frontend, name, fqdn, gw, "public")
 
-		# append /etc/hosts
-		hosts_str = append_host(name, fqdn, interface, hosts_str)
-
-		# write syconfig/network
-		if os.path.exists("/etc/sysconfig/network-scripts"):
-			write_ifcfg(iface, ip, netmask, mac, mtu, iface_gw)
-
-	if os.path.exists("/etc/network/interfaces"):
-		write_interfaces(interface_spec)
-
-	# write /etc/hosts and /tmp/machine
 	machine_str = ""
-
 	# adding compute node to the DB
 	xml_nodes = vc_out_xmlroot.findall('./compute/node')
 	if xml_nodes:
@@ -223,15 +189,46 @@ def fixFrontend(vc_out_xmlroot):
 				#we can just assume cpu = 1
 				machine_str += name + '\n'
 
+	# write /etc/hosts and /tmp/machine
 	print "Writing /etc/hosts"
 	write_file('/etc/hosts', hosts_str)
 	print "Writing /tmp/machinefile"
 	write_file('/tmp/machinefile', machine_str)
 
-	print "Setting hostname"
-	subprocess.call('hostname %s' % fqdn, shell=True)
-	if os.path.exists("/etc/hostname"):
-		write_file('/etc/hostname', "%s\n" % fqdn)
+	return fqdn
+
+def configure_interfaces_and_hosts(node, name, fqdn, gw, gw_iface):
+	interface_spec = {}
+	hosts_str = '127.0.0.1\tlocalhost.localdomain localhost\n'
+	for interface in node:
+		ip = interface.attrib["ip"]
+		netmask = interface.attrib["netmask"]
+		mac = interface.attrib["mac"]
+		mtu = "1500"
+		if "mtu" in interface.attrib:
+			mtu = interface.attrib["mtu"]
+		iface = get_iface(mac)
+		if iface is None:
+			print "Unable to find interface for mac %s" % mac
+			continue
+		print "Configuring iface %s for %s" % (iface, mac)
+		iface_gw = None
+		interface_spec[iface] = {'ip': ip, 'netmask': netmask, 'mtu': mtu}
+		if interface.tag == gw_iface:
+			interface_spec[iface]['gw'] = gw
+			iface_gw = gw
+
+		# append /etc/hosts
+		hosts_str = append_host(name, fqdn, interface, hosts_str)
+
+		# write syconfig/network
+		if os.path.exists("/etc/sysconfig/network-scripts"):
+			write_ifcfg(iface, ip, netmask, mac, mtu, iface_gw)
+
+	if os.path.exists("/etc/network/interfaces"):
+		write_interfaces(interface_spec)
+
+	return hosts_str
 
 def get_iface(mac):
 	try:
