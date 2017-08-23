@@ -185,15 +185,18 @@ def fixFrontend(vc_out_xmlroot):
 			print "Unable to find interface for mac %s" % mac
 			continue
 		print "Configuring iface %s for %s" % (iface, mac)
+		iface_gw = None
 		interface_spec[iface] = {'ip': ip, 'netmask': netmask, 'mtu': mtu}
+		if interface.tag == 'public':
+			interface_spec[iface]['gw'] = gw
+			iface_gw = gw
 
 		# append /etc/hosts
 		hosts_str = append_host(name, fqdn, interface, hosts_str)
 
 		# write syconfig/network
 		if os.path.exists("/etc/sysconfig/network-scripts"):
-			# write private interface eth0
-			write_ifcfg(iface, ip, netmask, mac, mtu)
+			write_ifcfg(iface, ip, netmask, mac, mtu, iface_gw)
 
 	if os.path.exists("/etc/network/interfaces"):
 		write_interfaces(interface_spec)
@@ -259,6 +262,8 @@ def write_ifcfg(ifname, ip, netmask, mac, mtu, gw = None):
 		ifup_str += 'HWADDR=%s\n' % mac
 	if gw != None:
 		ifup_str += 'GATEWAY=%s\n' % gw
+	else:
+		ifup_str += 'DEFROUTE=no\n'
 	write_file('/etc/sysconfig/network-scripts/ifcfg-%s' % ifname, ifup_str)
  
 def write_interfaces(network_info):
