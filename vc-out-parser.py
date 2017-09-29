@@ -272,9 +272,9 @@ def write_interfaces(network_info):
 	print "Writing /etc/network/interfaces"
 	os.rename("/etc/network/interfaces", "/etc/network/interfaces.vc-out-parser.bak")
         interfaces = "auto lo\niface lo inet loopback\n"
-	for device in network_info:
+	for iface, device in network_info.items():
 		interfaces += "auto %s\niface %s inet static\n\taddress %s\n\tnetmask %s\n\tmtu %s\n" % (
-			device['iface'], device['iface'], device['ip'], device['netmask'], device['mtu'])
+			iface, iface, device['ip'], device['netmask'], device['mtu'])
 		if "gw" in device:
 			interfaces += "\tgateway %s\n" % device['gw']
 	write_file('/etc/network/interfaces', interfaces)
