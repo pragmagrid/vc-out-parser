@@ -232,7 +232,9 @@ def configure_interfaces_and_hosts(node, name, fqdn, gw, gw_iface):
 
 def get_iface(mac):
 	try:
-		iface_out = subprocess.check_output(["ip -o link show| grep %s" % mac], shell=True)
+		p = subprocess.Popen("ip -o link show| grep %s" % mac, shell=True,
+				stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+		iface_out = p.stdout.read()
 		iface_part = iface_out.split(" ")[1]
 		return iface_part.split(":")[0]
 	except Exception:
